@@ -73,7 +73,7 @@ $title = 'Laundry management and order tracking';
 <link rel="stylesheet" href="<?= e(url('assets/css/landing.css')) ?>?v=2">
 <script>if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&'IntersectionObserver'in window)document.documentElement.classList.add('js-reveal')</script>
 <script src="<?= e(url('assets/js/landing.js')) ?>?v=2" defer></script>
-<script src="<?= e(url('assets/js/motion.js')) ?>?v=1" defer></script>
+<script src="<?= e(url('assets/js/motion.js')) ?>?v=2" defer></script>
 </head>
 <body class="landing">
 <a class="skip-link" href="#main">Skip to content</a>
