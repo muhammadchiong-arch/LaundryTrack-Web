@@ -4,7 +4,11 @@ require __DIR__ . '/includes/bootstrap.php';
 require __DIR__ . '/includes/phosphor.php';
 
 $me = current_user();
-$startUrl = $me ? url(home_for($me)) : url('login.php');
+$cust = current_customer();
+// Visitors are the shop's customers: the main action is booking a drop-off.
+$bookUrl = $cust ? url('my/book.php') : ($me ? url(home_for($me)) : url('register.php'));
+$bookLabel = $me ? 'Open workspace' : 'Book laundry';
+$signUrl = ($me || $cust) ? url(home_for($me ?? $cust)) : url('login.php');
 $shopName = setting('shop_name', 'LaundryTrack');
 $shopPhone = setting('shop_phone');
 $shopAddress = setting('shop_address');
@@ -82,7 +86,8 @@ $title = 'Laundry management and order tracking';
       <?php endforeach; ?>
       <a href="<?= e(url('track.php')) ?>">Track Order<span class="l-underline" aria-hidden="true"></span></a>
     </nav>
-    <a class="l-btn l-btn-dark" href="<?= e($startUrl) ?>">Get Started</a>
+    <a class="l-signin" href="<?= e($signUrl) ?>"><?= ($me || $cust) ? 'My account' : 'Sign in' ?></a>
+    <a class="l-btn l-btn-dark" href="<?= e($bookUrl) ?>"><?= e($bookLabel) ?></a>
     <button class="l-menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="l-menu" data-l-menu><span class="l-burger" aria-hidden="true"><span></span><span></span></span></button>
   </div>
   <nav class="l-mobile" id="l-menu" aria-label="Mobile" hidden>
@@ -90,17 +95,18 @@ $title = 'Laundry management and order tracking';
       <a href="<?= $href ?>" data-nav-link="<?= $key ?>"><?= e($label) ?><?= ph('caret-right') ?></a>
     <?php endforeach; ?>
     <a href="<?= e(url('track.php')) ?>">Track Order<?= ph('caret-right') ?></a>
+    <a href="<?= e($signUrl) ?>"><?= ($me || $cust) ? 'My account' : 'Sign in' ?><?= ph('caret-right') ?></a>
   </nav>
 </header>
 
 <main id="main">
   <section class="l-hero l-wrap" id="home" data-section="home">
     <div class="l-hero-copy" data-reveal>
-      <h1>Manage Laundry. <span>Track Every Order.</span></h1>
-      <p>A simple web-based platform that helps laundry businesses organize orders, monitor laundry progress, and keep customers informed.</p>
+      <h1>Book your laundry. <span>Track every order.</span></h1>
+      <p>Pick a drop-off time online, then follow your laundry from Received to Ready for Pickup.</p>
       <div class="l-ctas">
-        <a class="l-btn l-btn-primary l-btn-lg" href="<?= e($startUrl) ?>">Get Started<?= ph('arrow-right') ?></a>
-        <a class="l-btn l-btn-ghost l-btn-lg" href="#how">See How It Works</a>
+        <a class="l-btn l-btn-primary l-btn-lg" href="<?= e($bookUrl) ?>"><?= e($bookLabel) ?><?= ph('arrow-right') ?></a>
+        <a class="l-btn l-btn-ghost l-btn-lg" href="<?= e(url('track.php')) ?>">Track an order</a>
       </div>
     </div>
     <div class="l-hero-visual" data-reveal="2">
@@ -201,7 +207,7 @@ $title = 'Laundry management and order tracking';
       <div class="l-stack">
         <h2>Make every laundry order easier to track.</h2>
         <p>LaundryTrack connects customers, staff, and administrators in one simple laundry management system.</p>
-        <a class="l-btn l-btn-peri l-btn-lg" href="<?= e($startUrl) ?>">Get Started<?= ph('arrow-right') ?></a>
+        <a class="l-btn l-btn-peri l-btn-lg" href="<?= e($bookUrl) ?>"><?= e($bookLabel) ?><?= ph('arrow-right') ?></a>
       </div>
       <span class="l-lm l-lm-cta" aria-hidden="true"><?php $lmState = 'processing'; $lmClass = ''; require __DIR__ . '/includes/partials/logo_motion.php'; ?></span>
     </div>

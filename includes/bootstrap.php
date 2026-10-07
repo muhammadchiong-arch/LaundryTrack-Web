@@ -19,6 +19,23 @@ define('BASE_PATH', rtrim($config['base_path'], '/'));
 require __DIR__ . '/helpers.php';
 require __DIR__ . '/db.php';
 require __DIR__ . '/auth.php';
+require __DIR__ . '/orders.php';
+require __DIR__ . '/bookings.php';
+
+// Never show PHP errors (with file paths and SQL) to visitors; log them and show a plain page.
+ini_set('display_errors', '0');
+set_exception_handler(function (Throwable $ex) {
+    error_log('LaundryTrack: ' . $ex->getMessage() . ' in ' . $ex->getFile() . ':' . $ex->getLine());
+    if (!headers_sent()) {
+        http_response_code(500);
+    }
+    $title = 'Something went wrong';
+    $message = 'The page could not be finished. Go back and try again. If it keeps happening, tell the shop admin.';
+    if (!defined('NO_DB')) {
+        define('NO_DB', true);
+    }
+    require __DIR__ . '/layout/error.php';
+});
 
 session_name('laundrytrack');
 session_set_cookie_params([

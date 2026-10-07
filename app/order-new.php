@@ -14,13 +14,20 @@ $v = [
 ];
 $errors = [];
 
+$dupes = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($mode === 'existing') {
         if (!$picked) $errors['customer'] = 'Search and pick a customer, or add a new one.';
     } else {
         $phone = phone_digits($v['phone']);
         if ($v['name'] === '') $errors['name'] = 'Enter the customer\'s name.';
-        if (strlen($phone) < 7 || strlen($phone) > 13) $errors['phone'] = 'Enter a phone number, e.g. 0917 123 4567.';
+        if (strlen($phone) < 7 || strlen($phone) > 13) {
+            $errors['phone'] = 'Enter a phone number, e.g. 0917 123 4567.';
+        } elseif (!input('confirm_new')) {
+            // Avoid duplicate customer records: offer the existing one first.
+            $dupes = q('SELECT id, name, phone FROM customers WHERE phone = ? ORDER BY id LIMIT 3', [$phone])->fetchAll();
+            if ($dupes) $errors['phone'] = 'This number is already saved. Use the existing customer, or tick "Add as a new customer" below.';
+        }
     }
     $service = null;
     foreach ($services as $s) {
@@ -30,38 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $weight = round((float) $v['weight_kg'], 2);
     if ($weight < 0.1 || $weight > 200) $errors['weight_kg'] = 'Enter the weight in kg (0.1 to 200).';
     $due = $service ? round($weight * (float) $service['price_per_kg'], 2) : 0;
-    $payAmount = round((float) $v['pay_amount'], 2);
-    if ($v['pay_amount'] !== '') {
-        if ($payAmount < 0) $errors['pay_amount'] = 'Enter zero or more.';
-        elseif ($payAmount > $due + 0.004) $errors['pay_amount'] = 'The payment is more than the total of ' . money($due) . '.';
-        if (!in_array($v['pay_method'], ['cash', 'gcash'], true)) $errors['pay_method'] = 'Choose cash or GCash.';
-        elseif ($payAmount > 0 && $v['pay_method'] === 'gcash' && $v['pay_reference'] === '') $errors['pay_reference'] = 'Enter the GCash reference number.';
-    }
+    [$payErr, $payAmount, $payMethod, $payRef] = validate_payment(['amount' => $v['pay_amount'], 'method' => $v['pay_method'], 'reference' => $v['pay_reference']], $due, true);
+    foreach ($payErr as $k => $msg) $errors['pay_' . $k] = $msg;
 
     if (!$errors) {
-        $pdo = db();
-        $pdo->beginTransaction();
-        try {
-            if ($mode === 'new') {
-                q('INSERT INTO customers (name, phone, address, created_by) VALUES (?, ?, ?, ?)',
-                  [mb_substr($v['name'], 0, 100), $phone, mb_substr($v['address'], 0, 255) ?: null, $me['id']]);
-                $customerId = (int) $pdo->lastInsertId();
-            }
-            q('INSERT INTO orders (customer_id, service_id, weight_kg, price_per_kg, amount_due, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-              [$customerId, $service['id'], $weight, $service['price_per_kg'], $due, mb_substr($v['notes'], 0, 255) ?: null, $me['id']]);
-            $orderId = (int) $pdo->lastInsertId();
-            $orderNo = 'LAU-' . (1000 + $orderId);
-            q('UPDATE orders SET order_no = ? WHERE id = ?', [$orderNo, $orderId]);
-            q("INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, 'Received', ?)", [$orderId, $me['id']]);
-            if ($payAmount > 0) {
-                q('INSERT INTO transactions (order_id, amount, method, reference, received_by) VALUES (?, ?, ?, ?, ?)',
-                  [$orderId, $payAmount, $v['pay_method'], mb_substr($v['pay_reference'], 0, 64) ?: null, $me['id']]);
-            }
-            $pdo->commit();
-        } catch (Throwable $ex) {
-            $pdo->rollBack();
-            throw $ex;
+        if ($mode === 'new') {
+            q('INSERT INTO customers (name, phone, address, created_by) VALUES (?, ?, ?, ?)',
+              [mb_substr($v['name'], 0, 100), $phone, mb_substr($v['address'], 0, 255) ?: null, $me['id']]);
+            $customerId = (int) db()->lastInsertId();
         }
+        [$orderId, $orderNo] = create_order(['customer_id' => $customerId, 'service' => $service, 'weight' => $weight,
+            'notes' => mb_substr($v['notes'], 0, 255), 'pay_amount' => $payAmount, 'pay_method' => $payMethod, 'pay_reference' => $payRef], $me['id']);
         flash('Order ' . $orderNo . ' created. Give the customer this number.');
         redirect('app/order.php?id=' . $orderId);
     }
@@ -108,6 +94,14 @@ require __DIR__ . '/../includes/layout/app_top.php';
             <input id="phone" name="phone" type="tel" inputmode="tel" value="<?= e($v['phone']) ?>" placeholder="0917 123 4567" autocomplete="off" data-required-when="mode=new">
             <?= field_error($errors, 'phone') ?: '<small class="hint">The last 4 digits let the customer track the order.</small>' ?>
           </div>
+          <?php if ($dupes): ?>
+            <div class="dupes">
+              <?php foreach ($dupes as $d): ?>
+                <a class="btn btn-sm btn-soft" href="<?= e(url('app/order-new.php?customer_id=' . $d['id'])) ?>">Use <?= e($d['name']) ?> · <?= e(fmt_phone($d['phone'])) ?></a>
+              <?php endforeach; ?>
+              <label class="check"><input type="checkbox" name="confirm_new" value="1"> Add as a new customer anyway</label>
+            </div>
+          <?php endif; ?>
         </div>
         <div class="field">
           <label for="address">Address <span class="optional">Optional</span></label>
@@ -145,7 +139,7 @@ require __DIR__ . '/../includes/layout/app_top.php';
       <div class="field-row">
         <div class="field">
           <label for="pay_amount">Amount received</label>
-          <input id="pay_amount" name="pay_amount" type="number" inputmode="decimal" step="0.01" min="0" value="<?= e($v['pay_amount']) ?>" placeholder="0.00 — pay at pickup" data-pay>
+          <input id="pay_amount" name="pay_amount" type="number" inputmode="decimal" step="0.01" min="0" value="<?= e($v['pay_amount']) ?>" placeholder="0.00 · pay at pickup" data-pay>
           <?= field_error($errors, 'pay_amount') ?>
         </div>
         <div class="field">

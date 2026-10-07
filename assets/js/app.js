@@ -169,6 +169,24 @@
     }, true);
   });
 
+  // A second button in a form that needs its own confirmation (e.g. Cancel next to Reject).
+  $$('button[data-confirm-click]').forEach(function (b) {
+    b.addEventListener('click', function (e) { if (!window.confirm(b.getAttribute('data-confirm-click'))) e.preventDefault(); });
+  });
+
+  // Booking step 3: show the price estimate as the customer types a weight.
+  var est = $('[data-est-kg]');
+  if (est) {
+    var out = $('[data-est-out]'), base = out ? out.textContent : '';
+    var showEst = function () {
+      var kgv = parseFloat(est.value), price = parseFloat(est.getAttribute('data-price'));
+      if (!out) return;
+      out.textContent = kgv > 0 ? 'Estimate: ' + est.getAttribute('data-currency') + (kgv * price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '. The final price uses the weight at drop-off.' : base;
+    };
+    est.addEventListener('input', showEst);
+    showEst();
+  }
+
   // ---------- New order ----------
   var orderForm = $('[data-new-order]');
   function newOrderCustomerOk(form) {
