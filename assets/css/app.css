@@ -695,7 +695,7 @@ fieldset.field { border: none; margin: 0; padding: 0; }
 
 @media (max-width: 860px) {
   .book-layout, .home-grid { grid-template-columns: minmax(0, 1fr); }
-  .book-summary { position: static; order: -1; }
+  .book-summary { position: static; }
   .split-washer { min-height: 11rem; }
   .split-washer .washer { width: 10rem; }
   .order-layout, .new-order, .hero-card { grid-template-columns: minmax(0, 1fr); }
@@ -746,7 +746,9 @@ fieldset.field { border: none; margin: 0; padding: 0; }
 
   .topbar-cta { display: none; }
   .stepper li { min-width: 0; padding: .5rem; justify-content: center; }
+  .stepper li:not(.current) { flex: none; width: 2.75rem; }
   .stepper li:not(.current) .stepper-label { display: none; }
+  .stepper li.current { flex: 1 0 auto; }
   .bookings-table .tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "when status" "cust cust" "svc svc" "act act"; }
   .bookings-table .c-when { grid-area: when; }
   .bookings-table .c-status { grid-area: status; align-items: flex-end; }

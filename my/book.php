@@ -180,9 +180,9 @@ require __DIR__ . '/../includes/layout/app_top.php';
 <aside class="summary book-summary" aria-label="Your booking so far">
   <span class="kicker kicker-light">YOUR BOOKING</span>
   <dl class="aside-rows">
-    <div><dt>Service</dt><dd><?= $service ? e($service['name']) : '—' ?></dd></div>
-    <div><dt>Rate</dt><dd><?= $service ? e(money($service['price_per_kg'])) . '/kg' : '—' ?></dd></div>
-    <div><dt>Drop-off</dt><dd><?= !empty($draft['time']) ? e(date('M j', strtotime($draft['date'])) . ', ' . date('g:i A', strtotime('2000-01-01 ' . $draft['time']))) : '—' ?></dd></div>
+    <div><dt>Service</dt><dd><?= $service ? e($service['name']) : 'Not chosen' ?></dd></div>
+    <div><dt>Rate</dt><dd><?= $service ? e(money($service['price_per_kg'])) . '/kg' : 'Not chosen' ?></dd></div>
+    <div><dt>Drop-off</dt><dd><?= !empty($draft['time']) ? e(date('M j', strtotime($draft['date'])) . ', ' . date('g:i A', strtotime('2000-01-01 ' . $draft['time']))) : 'Not chosen' ?></dd></div>
     <div><dt>Estimate</dt><dd><?= $est() !== null ? e(money($est())) : 'After weighing' ?></dd></div>
   </dl>
   <p class="summary-note">You pay at the shop after your laundry is weighed.</p>

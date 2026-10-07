@@ -69,7 +69,7 @@ $title = 'Laundry management and order tracking';
 <meta name="description" content="Manage laundry and track every order. Orders, statuses, payments and customer tracking in one simple system.">
 <title><?= e($shopName) ?> · Manage laundry. Track every order.</title>
 <link rel="icon" href="<?= e(url('assets/img/logo.svg')) ?>" type="image/svg+xml">
-<link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>?v=3">
+<link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>?v=4">
 <link rel="stylesheet" href="<?= e(url('assets/css/landing.css')) ?>?v=2">
 <script>if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&'IntersectionObserver'in window)document.documentElement.classList.add('js-reveal')</script>
 <script src="<?= e(url('assets/js/landing.js')) ?>?v=2" defer></script>

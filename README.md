@@ -4,12 +4,15 @@ A laundry shop management and order-tracking system that runs **offline on XAMPP
 
 | Role | Can use |
 |---|---|
-| **Admin** | Dashboard, Orders, New order, Customers, Sales, Staff, Settings |
-| **Staff** | New order, Orders (update status, record payments), Customers, Transactions |
-| **Customer** | Track page: order number + last 4 digits of their phone → status, timeline, details, order history. No account needed. |
+| **Customer** (online account) | Home (current laundry and next drop-off), **Book laundry** (5 steps: service, date and time, details, review, done), My bookings (cancel before the slot), Profile |
+| **Walk-in customer** | Track page: order number + last 4 digits of their phone. No account needed. |
+| **Staff** | Dashboard, Bookings (confirm, reject, receive laundry, no-show), Schedule, New order, Orders, Customers, Payments |
+| **Admin** | Everything staff can do, plus moving an order back a step, voiding payments, Sales totals, Staff accounts, Settings (shop, booking schedule, closed days, services and prices) and the Activity log |
 
-Every order follows the same steps, with the same words on every screen:
-**Received → Washing → Drying → Folding → Ready for Pickup → Completed**
+**Bookings:** Pending → Confirmed → Dropped off (the order is created when staff receive and weigh the laundry). Rejected, Cancelled, No-show and Expired close a booking.
+**Orders:** Received → Washing → Drying → Folding → Ready for Pickup → Completed, one step at a time, or Cancelled (with a reason; any payment is refunded). An order is completed only when fully paid.
+
+Why the system works this way, and everything the audit changed: [docs/AUDIT.md](docs/AUDIT.md).
 
 ## Install on XAMPP (Windows)
 
@@ -23,9 +26,11 @@ Every order follows the same steps, with the same words on every screen:
 3. Create the database: open <http://localhost/phpmyadmin>, go to **Import**, choose `database/laundrytrack.sql` and click **Import**. This creates the `laundrytrack` database with its tables and the default services.
    - Command-line alternative: `C:\xampp\mysql\bin\mysql -u root < database\laundrytrack.sql`
 4. Open <http://localhost/laundrytrack/setup.php> and create the admin account. This page turns itself off once an account exists.
-5. Sign in at <http://localhost/laundrytrack/login.php>. Add staff under **Staff**, and set prices under **Settings**.
+5. Sign in at <http://localhost/laundrytrack/login.php>. Add staff under **Staff**. Under **Settings**, set prices, opening days and hours, slot length and **bookings per slot**, and any holidays.
 
-The home page is <http://localhost/laundrytrack/>. The customer tracking page is <http://localhost/laundrytrack/track.php>, linked from the home page as **Track Order**.
+**Upgrading an earlier install** (before online booking)? Don't re-import the full file. In phpMyAdmin, select the `laundrytrack` database, then **Import** `database/migrations/002_booking.sql`. Your orders, customers and payments stay as they are.
+
+The home page is <http://localhost/laundrytrack/>. Customers create an account there (**Book laundry**) or track a walk-in order at <http://localhost/laundrytrack/track.php>. Staff, admins and customers all sign in at the same page.
 
 **Different MySQL password or port?** Copy `includes/config.local.example.php` to `includes/config.local.php` and change only the values that differ. That file is git-ignored.
 
@@ -34,22 +39,28 @@ The home page is <http://localhost/laundrytrack/>. The customer tracking page is
 ## Motion
 
 - The landing page and the sign-in pages show the animated washer and logo mark from the LaundryTrack designs. Animations pause when they are scrolled out of view.
-- After signing in, a short welcome intro plays once ("Hello, Grace" and a loading bar, about 2 seconds). A tap or any key skips it.
+- After a staff or admin sign-in, a short welcome intro plays ("Hello, Grace" and a loading bar, about 2 seconds), only for the first sign-in of the day on that device. A tap or any key skips it.
 - If the device asks for reduced motion, the washer and logo stay still, the intro shortens to a quick fade, and content appears without sliding.
 
 ## Daily use
 
-1. **New order:** find the customer by name or phone (or add them), choose the service, enter the weight and, if they pay now, the payment. Saving creates the order number (e.g. `LAU-1001`) and sets the status to **Received**. Print the claim slip, or tell the customer the number.
-2. **Move it along:** one tap on **Move to Washing / Drying / Folding / Ready for Pickup**, from the order page, the Orders list or the Dashboard board. Every change is timestamped in the order's history. Admins can also set any status, for example to correct a mistake.
-3. **Pickup:** record the balance (Cash or GCash with a reference number), then **Mark completed**. You'll be asked to confirm if a balance is still unpaid.
+1. **Booked customers:** check **Bookings → Needs review** and confirm (or reject with a reason). When the customer arrives, open the booking and press **Receive laundry**: enter the actual weight (and any payment). That creates the order.
+2. **Walk-ins:** **New order**. Find the customer by name or phone, or add them (the app warns if the number already exists). Choose the service, enter the weight and, if they pay now, the payment. Saving creates the order number (e.g. `LAU-1001`) with status **Received**. Print the claim slip, or tell the customer the number.
+3. **Move it along:** one tap on **Move to Washing / Drying / Folding / Ready for Pickup** from the order page, the Orders list or the Dashboard board. Every change is timestamped. On Ready for Pickup, **Text customer** opens your phone's SMS app with the message filled in.
+4. **Pickup:** **Collect ₱X and mark completed** takes the balance (Cash, or GCash with its reference number) and completes the order in one step. An unpaid order can't be completed.
+5. **Mistakes:** an admin can **Undo last step** (logged as a correction) or **Void** a payment with a reason. Anyone can **Cancel order** with a reason; money already paid is recorded as refunded.
 
 ## What's inside
 
 ```
-index.php            Landing page (Landing v7): Get Started → sign in, Track Order → tracking
+index.php            Landing page (Landing v7): Book laundry → register, Track an order, Sign in
+register.php         Customer sign-up (name, mobile, email, password)
+my/                  Customer area: home, 5-step booking, my bookings, profile
 track.php            Customer tracking: order no. + last 4 phone digits → status, timeline, order history
 login.php, logout.php, setup.php
-app/                 Signed-in pages (each one checks the role)
+app/                 Staff and admin pages (each one checks the role)
+  bookings.php, booking.php, schedule.php   Booking queue, receive laundry, day schedule
+  activity.php       Admin: who did what
   dashboard.php      Admin: today's numbers, order board, recent updates
   orders.php         Filter by status, search, date range, unpaid
   order.php          Details, next status, payments, history, claim slip
@@ -61,6 +72,8 @@ app/                 Signed-in pages (each one checks the role)
   account.php        Change your own password
   api/customers.php  Customer search used by New order
 includes/            Config, database (PDO), auth, helpers, layouts (blocked from the web by .htaccess)
+  orders.php         Order rules: allowed status changes, payments, refunds, voids
+  bookings.php       Schedule, slot capacity (locked per slot), booking states
 assets/              app.css, app.js, landing.css, landing.js, logo, local fonts (Nunito and Figtree, SIL Open Font License)
                      Landing icons are Phosphor Icons (MIT) inlined as SVG by includes/phosphor.php
                      washer.jpg + includes/partials/washer.php: the animated washer (Claude Design "Processing Icon")
@@ -68,7 +81,7 @@ assets/              app.css, app.js, landing.css, landing.js, logo, local fonts
 database/laundrytrack.sql
 ```
 
-Tables: `users` (admin/staff), `customers`, `services`, `orders`, `order_status_history`, `transactions`, `settings`, `attempts`.
+Tables: `users` (admin/staff), `customers` (walk-ins and online accounts), `services`, `bookings`, `orders`, `order_status_history`, `transactions` (payments, refunds, voids), `closed_dates`, `activity_log`, `settings`, `attempts`.
 
 ## Security
 
