@@ -137,7 +137,8 @@ function status_message(string $status): string
         'Drying'           => 'Your laundry is in the dryer.',
         'Folding'          => 'Your laundry is being folded and packed.',
         'Ready for Pickup' => 'Your laundry is ready. Please pick it up at the shop.',
-        'Completed'        => 'Picked up. Thank you!',
+        'Completed'        => 'Picked up. Thank you.',
+        'Cancelled'        => 'This order was cancelled. Contact the shop if you have questions.',
     ][$status] ?? '';
 }
 
@@ -199,61 +200,11 @@ function icon(string $name, string $class = 'icon'): string
         'arrow'    => '<path d="M5 12h14M13 6l6 6-6 6"/>',
         'back'     => '<path d="M19 12H5M11 6l-6 6 6 6"/>',
         'printer'  => '<path d="M7 9V3.5h10V9"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v6.5H7z"/>',
+        'calendar' => '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+        'list'     => '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+        'phone'    => '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1.5 1.5 0 0 1-1.6 1.5A16 16 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4Z"/>',
         'key'      => '<circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5"/>',
     ];
     return '<svg class="' . e($class) . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" '
          . 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . ($paths[$name] ?? '') . '</svg>';
-}
-
-// Records a status change. Returns false if someone else changed the order first.
-function change_status(int $orderId, string $from, string $to, int $userId): bool
-{
-    $pdo = db();
-    $pdo->beginTransaction();
-    $st = q(
-        'UPDATE orders SET status = ?, completed_at = ' . ($to === 'Completed' ? 'NOW()' : 'NULL') . ' WHERE id = ? AND status = ?',
-        [$to, $orderId, $from]
-    );
-    if ($st->rowCount() !== 1) {
-        $pdo->rollBack();
-        return false;
-    }
-    q('INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)', [$orderId, $to, $userId]);
-    $pdo->commit();
-    return true;
-}
-
-// Shared POST handler for the "Move to <next>" buttons on lists and boards.
-function handle_advance_post(string $back): void
-{
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || input('action') !== 'advance') {
-        return;
-    }
-    $order = q_one('SELECT id, order_no, status FROM orders WHERE id = ?', [(int) input('order_id')]);
-    $expected = input('from');
-    if (!$order || $order['status'] !== $expected || !($next = next_status($expected))) {
-        flash('That order was already updated. The list now shows its current status.', 'warning');
-    } elseif (change_status((int) $order['id'], $expected, $next, current_user()['id'])) {
-        flash($order['order_no'] . ' moved to ' . $next . '.');
-    } else {
-        flash('That order was already updated. The list now shows its current status.', 'warning');
-    }
-    redirect($back);
-}
-
-function advance_button(array $o, string $class = 'btn btn-sm btn-soft'): string
-{
-    $next = next_status($o['status']);
-    if (!$next) {
-        return '';
-    }
-    $confirm = '';
-    if ($next === 'Completed' && isset($o['amount_due'], $o['paid']) && (float) $o['amount_due'] - (float) $o['paid'] > 0.004) {
-        $confirm = ' data-confirm="' . e($o['order_no'] . ' still has ' . money((float) $o['amount_due'] - (float) $o['paid']) . ' unpaid. Mark it completed anyway?') . '"';
-    }
-    return '<form method="post" class="inline-form"' . $confirm . '>' . csrf_field()
-        . '<input type="hidden" name="action" value="advance">'
-        . '<input type="hidden" name="order_id" value="' . (int) $o['id'] . '">'
-        . '<input type="hidden" name="from" value="' . e($o['status']) . '">'
-        . '<button class="' . e($class) . '" type="submit">' . e($next === 'Completed' ? 'Mark completed' : 'Move to ' . $next) . '</button></form>';
 }

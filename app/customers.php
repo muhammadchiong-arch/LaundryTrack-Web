@@ -19,7 +19,7 @@ $pages = max(1, (int) ceil($found / $perPage));
 $page = min($page, $pages);
 $customers = q(
     "SELECT c.*, COUNT(o.id) AS orders, MAX(o.created_at) AS last_order,
-            SUM(CASE WHEN o.status <> 'Completed' THEN 1 ELSE 0 END) AS open_orders
+            SUM(CASE WHEN o.status NOT IN ('Completed','Cancelled') THEN 1 ELSE 0 END) AS open_orders
        FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
       WHERE $where GROUP BY c.id ORDER BY COALESCE(MAX(o.created_at), c.created_at) DESC
       LIMIT $perPage OFFSET " . (($page - 1) * $perPage),
@@ -49,11 +49,11 @@ require __DIR__ . '/../includes/layout/app_top.php';
       <?php foreach ($customers as $c): ?>
         <div class="tr" role="row" data-href="<?= e(url('app/customer.php?id=' . $c['id'])) ?>">
           <span role="cell" class="c-name"><span class="avatar"><?= e(initials($c['name'])) ?></span>
-            <span class="list-main"><a href="<?= e(url('app/customer.php?id=' . $c['id'])) ?>"><b><?= e($c['name']) ?></b></a><span class="muted-sm mobile-only"><?= e(fmt_phone($c['phone'])) ?> · <?= (int) $c['orders'] ?> orders</span></span></span>
+            <span class="list-main"><a href="<?= e(url('app/customer.php?id=' . $c['id'])) ?>"><b><?= e($c['name']) ?></b></a><?= $c['password_hash'] ? ' <span class="role-tag" title="Has an online account">Online</span>' : '' ?><span class="muted-sm mobile-only"><?= e(fmt_phone($c['phone'])) ?> · <?= (int) $c['orders'] ?> orders</span></span></span>
           <span role="cell" class="c-phone num"><?= e(fmt_phone($c['phone'])) ?></span>
           <span role="cell" class="c-addr truncate muted"><?= e($c['address'] ?? '') ?></span>
           <span role="cell" class="c-orders num"><?= (int) $c['orders'] ?></span>
-          <span role="cell" class="c-last"><?= e($c['last_order'] ? fmt_dt($c['last_order'], 'M j, Y') : '—') ?></span>
+          <span role="cell" class="c-last"><?= e($c['last_order'] ? fmt_dt($c['last_order'], 'M j, Y') : 'None yet') ?></span>
           <span role="cell" class="c-open"><?= (int) $c['open_orders'] ? '<span class="chip chip-washing">' . (int) $c['open_orders'] . ' active</span>' : '' ?></span>
         </div>
       <?php endforeach; ?>

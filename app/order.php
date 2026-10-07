@@ -1,16 +1,11 @@
 <?php
+// One order: move it along, take payment, and handle corrections.
+// All status and money rules live in includes/orders.php.
 require __DIR__ . '/../includes/bootstrap.php';
 $me = require_role('admin', 'staff');
 
 $id = (int) input('id');
-$load = fn () => q_one(
-    'SELECT o.*, c.name AS customer_name, c.phone, c.address, s.name AS service_name, u.name AS created_by_name,
-            (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.order_id = o.id) AS paid
-       FROM orders o JOIN customers c ON c.id = o.customer_id JOIN services s ON s.id = o.service_id
-       LEFT JOIN users u ON u.id = o.created_by WHERE o.id = ?',
-    [$id]
-);
-$order = $load();
+$order = load_order($id);
 if (!$order) {
     http_response_code(404);
     $title = 'Order not found';
@@ -20,48 +15,65 @@ if (!$order) {
     exit;
 }
 $self = 'app/order.php?id=' . $id;
-$balance = round(max(0, (float) $order['amount_due'] - (float) $order['paid']), 2);
+$balance = order_balance($order);
+$open = order_is_open($order);
 $errors = [];
+$fail = function (string $msg) use ($self) { flash($msg, 'warning'); redirect($self); };
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = input('action');
+    if (input('from') !== '' && input('from') !== $order['status']) {
+        $fail('Someone else updated this order first. It now shows the current status.');
+    }
     if ($action === 'advance') {
         handle_advance_post($self);
-    } elseif ($action === 'set_status' && is_admin()) {
-        $to = input('to');
-        if (!in_array($to, STATUSES, true) || $to === $order['status']) {
-            flash('Pick a different status.', 'warning');
-        } elseif (change_status($id, input('from'), $to, $me['id'])) {
-            flash($order['order_no'] . ' set to ' . $to . '.');
-        } else {
-            flash('Someone else updated this order first. Check its status and try again.', 'warning');
-        }
-        redirect($self);
-    } elseif ($action === 'pay') {
-        $amount = round((float) input('amount'), 2);
-        $method = input('method');
-        $ref = mb_substr(input('reference'), 0, 64);
-        if ($amount <= 0) {
-            $errors['amount'] = 'Enter an amount above zero.';
-        } elseif ($amount > $balance + 0.004) {
-            $errors['amount'] = 'That is more than the balance of ' . money($balance) . '.';
-        }
-        if (!in_array($method, ['cash', 'gcash'], true)) {
-            $errors['method'] = 'Choose cash or GCash.';
-        } elseif ($method === 'gcash' && $ref === '') {
-            $errors['reference'] = 'Enter the GCash reference number.';
+    } elseif ($action === 'pay' || $action === 'pay_complete') {
+        // Taking the last payment and marking the pickup is one step at the counter.
+        if (!$open || $balance <= 0) $fail('There is nothing left to pay on this order.');
+        [$errors, $amount, $method, $ref] = validate_payment($_POST, $balance);
+        if ($action === 'pay_complete' && !$errors && abs($amount - $balance) > 0.004) {
+            $errors['amount'] = 'To complete, collect the full balance of ' . money($balance) . '.';
         }
         if (!$errors) {
-            q('INSERT INTO transactions (order_id, amount, method, reference, received_by) VALUES (?, ?, ?, ?, ?)',
-              [$id, $amount, $method, $ref ?: null, $me['id']]);
-            flash(money($amount) . ' recorded' . ($amount + 0.004 >= $balance ? '. The order is fully paid.' : '.'));
+            record_payment($id, $amount, $method, $ref, $me['id']);
+            if ($action === 'pay_complete') {
+                $err = transition_order(load_order($id), 'Completed', $me);
+                flash($err ? money($amount) . ' recorded. ' . $err : money($amount) . ' collected. ' . $order['order_no'] . ' is completed.', $err ? 'warning' : 'success');
+            } else {
+                flash(money($amount) . ' recorded' . ($amount + 0.004 >= $balance ? '. The order is fully paid.' : '.'));
+            }
             redirect($self);
         }
-    } elseif ($action === 'delete_payment' && is_admin()) {
-        q('DELETE FROM transactions WHERE id = ? AND order_id = ?', [(int) input('tx_id'), $id]);
-        flash('Payment removed.');
+    } elseif ($action === 'step_back') {
+        $prev = STATUSES[max(0, status_index($order['status']) - 1)];
+        if ($err = transition_order($order, $prev, $me, 'Correction')) {
+            $fail($err);
+        }
+        flash($order['order_no'] . ' moved back to ' . $prev . '.');
         redirect($self);
-    } elseif ($action === 'edit' && $order['status'] !== 'Completed') {
+    } elseif ($action === 'cancel') {
+        $reason = mb_substr(input('reason'), 0, 200);
+        if ($reason === '') {
+            $errors['cancel_reason'] = 'Enter why the order is cancelled.';
+        } elseif ($err = cancel_order($order, $reason, input('refund_method'), mb_substr(input('refund_reference'), 0, 64), $me)) {
+            $fail($err);
+        } else {
+            $paid = (float) $order['paid'];
+            flash($order['order_no'] . ' cancelled' . ($paid > 0.004 ? ' and ' . money($paid) . ' refunded.' : '.'));
+            redirect($self);
+        }
+    } elseif ($action === 'void' && is_admin()) {
+        $tx = q_one('SELECT * FROM transactions WHERE id = ? AND order_id = ? AND voided_at IS NULL', [(int) input('tx_id'), $id]);
+        $reason = mb_substr(input('reason'), 0, 200);
+        if (!$tx) $fail('That payment was already voided.');
+        if (!$open) $fail('Payments on ' . strtolower($order['status']) . ' orders are locked.');
+        if ($reason === '') $fail('Enter why the payment is being voided.');
+        q('UPDATE transactions SET voided_at = NOW(), voided_by = ?, void_reason = ? WHERE id = ?', [$me['id'], $reason, $tx['id']]);
+        log_activity('payment.void', $order['order_no'] . ': ' . money($tx['amount']) . ' ' . $tx['method'] . ' voided (' . $reason . ')', (int) $order['customer_id']);
+        flash('Payment voided. It stays on record but no longer counts.');
+        redirect($self);
+    } elseif ($action === 'edit') {
+        if (!$open) $fail('A ' . strtolower($order['status']) . ' order can no longer be edited.');
         $service = q_one('SELECT * FROM services WHERE id = ?', [(int) input('service_id')]);
         $weight = round((float) input('weight_kg'), 2);
         $notes = mb_substr(input('notes'), 0, 255);
@@ -76,6 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 q('UPDATE orders SET service_id = ?, weight_kg = ?, price_per_kg = ?, amount_due = ?, notes = ? WHERE id = ?',
                   [$service['id'], $weight, $price, $due, $notes ?: null, $id]);
+                if (abs($due - (float) $order['amount_due']) > 0.004) {
+                    log_activity('order.edit', $order['order_no'] . ': total ' . money($order['amount_due']) . ' → ' . money($due), (int) $order['customer_id']);
+                }
                 flash('Order details saved.');
                 redirect($self);
             }
@@ -85,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $stamps = [];
 $history = q(
-    'SELECT h.status, h.changed_at, u.name AS user_name FROM order_status_history h
+    'SELECT h.status, h.note, h.changed_at, u.name AS user_name FROM order_status_history h
        LEFT JOIN users u ON u.id = h.changed_by WHERE h.order_id = ? ORDER BY h.changed_at, h.id',
     [$id]
 )->fetchAll();
@@ -93,14 +108,19 @@ foreach ($history as $h) {
     $stamps[$h['status']] = $h['changed_at'];
 }
 $payments = q(
-    'SELECT t.*, u.name AS user_name FROM transactions t LEFT JOIN users u ON u.id = t.received_by
+    'SELECT t.*, u.name AS user_name, v.name AS voided_by_name FROM transactions t
+       LEFT JOIN users u ON u.id = t.received_by LEFT JOIN users v ON v.id = t.voided_by
       WHERE t.order_id = ? ORDER BY t.created_at, t.id',
     [$id]
 )->fetchAll();
 $services = q('SELECT * FROM services WHERE is_active = 1 OR id = ? ORDER BY sort_order, name', [$order['service_id']])->fetchAll();
 [$payKey, $payLabel] = payment_state((float) $order['amount_due'], (float) $order['paid']);
-$next = next_status($order['status']);
+$next = $open ? next_status($order['status']) : null;
+$finalStep = $next === 'Completed';
 $editOpen = $errors && input('action') === 'edit';
+$cancelOpen = isset($errors['cancel_reason']);
+$smsText = 'Hi ' . explode(' ', trim($order['customer_name']))[0] . ', your laundry ' . $order['order_no'] . ' is ready for pickup at ' . setting('shop_name', 'the shop') . '.'
+         . ($balance > 0 ? ' Balance: ' . money($balance) . '.' : '');
 
 $title = $order['order_no'];
 $active = 'orders';
@@ -113,43 +133,72 @@ require __DIR__ . '/../includes/layout/app_top.php';
     <section class="hero-card single">
       <div class="hero-body">
         <div class="hero-meta">
-          <span class="muted-strong"><?= e($order['service_name']) ?> · <?= e(kg($order['weight_kg'])) ?> · <?= e(fmt_dt($order['created_at'])) ?></span>
+          <span class="muted-strong"><?= e($order['service_name']) ?> · <?= e(kg($order['weight_kg'])) ?> · <?= e(fmt_dt($order['created_at'])) ?><?= $order['booking_no'] ? ' · booked as ' . e($order['booking_no']) : ' · walk-in' ?></span>
           <?= status_chip($order['status']) ?>
         </div>
         <h2 class="order-number"><?= e($order['order_no']) ?></h2>
         <?php require __DIR__ . '/../includes/partials/progress.php'; ?>
         <div class="hero-actions">
-          <?php if ($next): ?>
-            <form method="post" class="inline-form"<?= $next === 'Completed' && $balance > 0 ? ' data-confirm="' . e('This order still has ' . money($balance) . ' unpaid. Mark it completed anyway?') . '"' : '' ?>>
+          <?php if ($order['status'] === ORDER_CANCELLED): ?>
+            <span class="done-note cancelled"><?= icon('x') ?>Cancelled<?= $order['cancel_reason'] ? ': ' . e($order['cancel_reason']) : '' ?></span>
+          <?php elseif (!$next): ?>
+            <span class="done-note"><?= icon('check') ?>Completed <?= e(fmt_when($order['completed_at'])) ?></span>
+          <?php elseif ($finalStep && $balance > 0): ?>
+            <a class="btn btn-primary btn-lg" href="#pay">Collect <?= e(money($balance)) ?> and complete<?= icon('arrow') ?></a>
+          <?php else: ?>
+            <form method="post" class="inline-form">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="advance">
               <input type="hidden" name="order_id" value="<?= $id ?>">
               <input type="hidden" name="from" value="<?= e($order['status']) ?>">
-              <button class="btn btn-primary btn-lg" type="submit"><?= e($next === 'Completed' ? 'Mark completed' : 'Move to ' . $next) ?><?= icon('arrow') ?></button>
+              <button class="btn btn-primary btn-lg" type="submit"><?= e($finalStep ? 'Mark completed' : 'Move to ' . $next) ?><?= icon('arrow') ?></button>
             </form>
-          <?php else: ?>
-            <span class="done-note"><?= icon('check') ?>Completed <?= e(fmt_when($order['completed_at'])) ?></span>
           <?php endif; ?>
-          <button class="btn btn-ghost" type="button" data-print><?= icon('printer') ?>Print claim slip</button>
+          <?php if ($order['status'] === 'Ready for Pickup'): ?>
+            <a class="btn btn-outline" href="sms:<?= e($order['phone']) ?>?body=<?= e(rawurlencode($smsText)) ?>"><?= icon('phone') ?>Text customer</a>
+          <?php endif; ?>
+          <?php if ($order['status'] !== ORDER_CANCELLED): ?>
+            <button class="btn btn-ghost" type="button" data-print><?= icon('printer') ?>Print claim slip</button>
+          <?php endif; ?>
         </div>
-        <?php if (is_admin()): ?>
-          <form method="post" class="set-status" data-confirm="Change this order's status? It will be added to the history.">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="set_status">
-            <input type="hidden" name="from" value="<?= e($order['status']) ?>">
-            <label for="to">Admin: set status</label>
-            <select id="to" name="to">
-              <?php foreach (STATUSES as $s): ?><option<?= $s === $order['status'] ? ' selected' : '' ?>><?= e($s) ?></option><?php endforeach; ?>
-            </select>
-            <button class="btn btn-outline btn-sm" type="submit">Set</button>
-          </form>
+        <?php if ($open || (is_admin() && $order['status'] === 'Completed')): ?>
+          <div class="order-tools">
+            <?php if (is_admin() && status_index($order['status']) > 0 && $order['status'] !== ORDER_CANCELLED): ?>
+              <form method="post" class="inline-form" data-confirm="Move <?= e($order['order_no']) ?> back to <?= e(STATUSES[status_index($order['status']) - 1]) ?>? It will be recorded as a correction.">
+                <?= csrf_field() ?><input type="hidden" name="action" value="step_back"><input type="hidden" name="from" value="<?= e($order['status']) ?>">
+                <button class="link-btn" type="submit">Undo last step</button>
+              </form>
+            <?php endif; ?>
+            <?php if ($open): ?>
+              <button class="link-btn danger" type="button" data-toggle="cancel-form" aria-expanded="<?= $cancelOpen ? 'true' : 'false' ?>">Cancel order</button>
+            <?php endif; ?>
+          </div>
+          <?php if ($open): ?>
+            <form method="post" id="cancel-form" class="stack cancel-box" novalidate<?= $cancelOpen ? '' : ' hidden' ?> data-confirm="Cancel <?= e($order['order_no']) ?>? This can't be undone.">
+              <?= csrf_field() ?><input type="hidden" name="action" value="cancel"><input type="hidden" name="from" value="<?= e($order['status']) ?>">
+              <div class="field">
+                <label for="cancel_reason">Reason</label>
+                <input id="cancel_reason" name="reason" maxlength="200" placeholder="e.g. Customer took the laundry back" required>
+                <?= field_error($errors, 'cancel_reason') ?>
+              </div>
+              <?php if ((float) $order['paid'] > 0.004): ?>
+                <p class="muted-sm">The customer paid <?= e(money($order['paid'])) ?>. It will be recorded as refunded.</p>
+                <div class="segmented" role="radiogroup" aria-label="Refund method">
+                  <label><input type="radio" name="refund_method" value="cash" checked><span>Refund cash</span></label>
+                  <label><input type="radio" name="refund_method" value="gcash"><span>Refund GCash</span></label>
+                </div>
+                <div class="field" data-show-when="refund_method=gcash"><label for="refund_reference">GCash reference no.</label><input id="refund_reference" name="refund_reference" inputmode="numeric" maxlength="20"></div>
+              <?php endif; ?>
+              <div class="form-actions"><button class="btn btn-outline danger" type="submit">Cancel order<?= (float) $order['paid'] > 0.004 ? ' and refund' : '' ?></button></div>
+            </form>
+          <?php endif; ?>
         <?php endif; ?>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-head"><h3>Details</h3>
-        <?php if ($order['status'] !== 'Completed'): ?><button class="link-btn" type="button" data-toggle="edit-form" aria-expanded="<?= $editOpen ? 'true' : 'false' ?>">Edit</button><?php endif; ?>
+        <?php if ($open): ?><button class="link-btn" type="button" data-toggle="edit-form" aria-expanded="<?= $editOpen ? 'true' : 'false' ?>">Edit</button><?php endif; ?>
       </div>
       <dl class="details">
         <div><dt>Customer</dt><dd><a href="<?= e(url('app/customer.php?id=' . $order['customer_id'])) ?>"><?= e($order['customer_name']) ?></a> · <a href="tel:<?= e($order['phone']) ?>"><?= e(fmt_phone($order['phone'])) ?></a></dd></div>
@@ -159,7 +208,7 @@ require __DIR__ . '/../includes/layout/app_top.php';
         <?php if ($order['notes']): ?><div><dt>Notes</dt><dd><?= e($order['notes']) ?></dd></div><?php endif; ?>
         <div><dt>Created</dt><dd><?= e(fmt_dt($order['created_at'], 'M j, Y g:i A')) ?><?= $order['created_by_name'] ? ' by ' . e($order['created_by_name']) : '' ?></dd></div>
       </dl>
-      <?php if ($order['status'] !== 'Completed'): ?>
+      <?php if ($open): ?>
         <form method="post" id="edit-form" class="stack edit-form" novalidate data-validate<?= $editOpen ? '' : ' hidden' ?>>
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="edit">
@@ -190,15 +239,15 @@ require __DIR__ . '/../includes/layout/app_top.php';
       <div class="panel-head"><h3>History</h3></div>
       <ol class="timeline">
         <?php foreach (array_reverse($history) as $h): ?>
-          <li><?= status_chip($h['status']) ?><span class="muted"><?= e(fmt_dt($h['changed_at'], 'M j, Y g:i A')) ?><?= $h['user_name'] ? ' · ' . e($h['user_name']) : '' ?></span></li>
+          <li><?= status_chip($h['status']) ?><span class="muted"><?= e(fmt_dt($h['changed_at'], 'M j, Y g:i A')) ?><?= $h['user_name'] ? ' · ' . e($h['user_name']) : '' ?><?= $h['note'] ? ' · ' . e($h['note']) : '' ?></span></li>
         <?php endforeach; ?>
       </ol>
     </section>
   </div>
 
   <aside class="order-side">
-    <section class="panel">
-      <div class="panel-head"><h3>Payment</h3><span class="pay-tag pay-<?= e($payKey) ?>"><?= e($payLabel) ?></span></div>
+    <section class="panel" id="pay">
+      <div class="panel-head"><h3>Payment</h3><span class="pay-tag pay-<?= e($order['status'] === ORDER_CANCELLED ? 'refunded' : $payKey) ?>"><?= e($order['status'] === ORDER_CANCELLED ? 'Cancelled' : $payLabel) ?></span></div>
       <dl class="sum-rows">
         <div><dt>Total</dt><dd><?= e(money($order['amount_due'])) ?></dd></div>
         <div><dt>Paid</dt><dd><?= e(money($order['paid'])) ?></dd></div>
@@ -206,24 +255,26 @@ require __DIR__ . '/../includes/layout/app_top.php';
       </dl>
       <?php if ($payments): ?>
         <ul class="pay-list">
-          <?php foreach ($payments as $p): ?>
-            <li>
-              <span class="list-main"><b><?= e(money($p['amount'])) ?> · <?= $p['method'] === 'gcash' ? 'GCash' : 'Cash' ?></b>
-                <span class="muted-sm"><?= e(fmt_when($p['created_at'])) ?><?= $p['reference'] ? ' · Ref ' . e($p['reference']) : '' ?><?= $p['user_name'] ? ' · ' . e($p['user_name']) : '' ?></span></span>
-              <?php if (is_admin()): ?>
-                <form method="post" data-confirm="Remove this <?= e(money($p['amount'])) ?> payment?"><?= csrf_field() ?>
-                  <input type="hidden" name="action" value="delete_payment"><input type="hidden" name="tx_id" value="<?= (int) $p['id'] ?>">
-                  <button class="link-btn danger" type="submit">Remove</button>
+          <?php foreach ($payments as $p): $void = $p['voided_at'] !== null; ?>
+            <li class="<?= $void ? 'voided' : '' ?>">
+              <span class="list-main"><b><?= $p['kind'] === 'refund' ? 'Refund −' : '' ?><?= e(money($p['amount'])) ?> · <?= $p['method'] === 'gcash' ? 'GCash' : 'Cash' ?><?= $void ? ' · Voided' : '' ?></b>
+                <span class="muted-sm"><?= e(fmt_when($p['created_at'])) ?><?= $p['reference'] ? ' · Ref ' . e($p['reference']) : '' ?><?= $p['user_name'] ? ' · ' . e($p['user_name']) : '' ?><?= $void ? ' · voided by ' . e($p['voided_by_name'] ?? 'admin') . ': ' . e($p['void_reason']) : '' ?></span></span>
+              <?php if (is_admin() && !$void && $open && $p['kind'] === 'payment'): ?>
+                <button class="link-btn danger" type="button" data-toggle="void-<?= (int) $p['id'] ?>" aria-expanded="false">Void</button>
+                <form method="post" id="void-<?= (int) $p['id'] ?>" class="void-form" hidden><?= csrf_field() ?>
+                  <input type="hidden" name="action" value="void"><input type="hidden" name="tx_id" value="<?= (int) $p['id'] ?>">
+                  <input name="reason" maxlength="200" placeholder="Why? e.g. typed the wrong amount" aria-label="Reason for voiding" required>
+                  <button class="btn btn-sm btn-outline danger" type="submit">Void payment</button>
                 </form>
               <?php endif; ?>
             </li>
           <?php endforeach; ?>
         </ul>
       <?php endif; ?>
-      <?php if ($balance > 0): ?>
+      <?php if ($open && $balance > 0): ?>
         <form method="post" class="stack pay-form" novalidate data-validate>
           <?= csrf_field() ?>
-          <input type="hidden" name="action" value="pay">
+          <input type="hidden" name="from" value="<?= e($order['status']) ?>">
           <div class="field">
             <label for="amount">Amount received</label>
             <input id="amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" max="<?= e($balance) ?>" value="<?= e(input('amount', number_format($balance, 2, '.', ''))) ?>" required>
@@ -237,11 +288,18 @@ require __DIR__ . '/../includes/layout/app_top.php';
           <?= field_error($errors, 'method') ?>
           <div class="field" data-show-when="method=gcash">
             <label for="reference">GCash reference no.</label>
-            <input id="reference" name="reference" maxlength="64" value="<?= e(input('reference')) ?>" inputmode="numeric">
+            <input id="reference" name="reference" maxlength="20" value="<?= e(input('reference')) ?>" inputmode="numeric">
             <?= field_error($errors, 'reference') ?>
           </div>
-          <button class="btn btn-primary btn-block" type="submit">Record payment</button>
+          <?php if ($finalStep): ?>
+            <button class="btn btn-primary btn-block" type="submit" name="action" value="pay_complete">Collect and mark completed</button>
+            <button class="btn btn-ghost btn-block" type="submit" name="action" value="pay">Record payment only</button>
+          <?php else: ?>
+            <button class="btn btn-primary btn-block" type="submit" name="action" value="pay">Record payment</button>
+          <?php endif; ?>
         </form>
+      <?php elseif (!$open && $order['status'] === 'Completed'): ?>
+        <p class="muted-sm">Payments are locked because this order is completed.</p>
       <?php endif; ?>
     </section>
   </aside>

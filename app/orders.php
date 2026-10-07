@@ -36,19 +36,18 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
     $params[] = $to . ' 00:00:00';
 }
 if ($pay === 'unpaid') {
-    $where[] = 'o.amount_due > COALESCE(p.paid, 0) + 0.004';
+    $where[] = "o.amount_due > COALESCE(p.paid, 0) + 0.004 AND o.status <> 'Cancelled'";
 }
-$from_sql = 'FROM orders o JOIN customers c ON c.id = o.customer_id JOIN services s ON s.id = o.service_id
-             LEFT JOIN (SELECT order_id, SUM(amount) paid FROM transactions GROUP BY order_id) p ON p.order_id = o.id';
+$from_sql = 'FROM orders o JOIN customers c ON c.id = o.customer_id JOIN services s ON s.id = o.service_id ' . sql_paid_join();
 $baseWhere = implode(' AND ', $where);
 
-$counts = array_fill_keys(STATUSES, 0);
+$counts = array_fill_keys(array_merge(STATUSES, [ORDER_CANCELLED]), 0);
 foreach (q("SELECT o.status, COUNT(*) n $from_sql WHERE $baseWhere GROUP BY o.status", $params) as $r) {
     $counts[$r['status']] = (int) $r['n'];
 }
 $total = array_sum($counts);
-$filters = ['active' => ['Active', $total - $counts['Completed']]];
-foreach (STATUSES as $s) {
+$filters = ['active' => ['Active', $total - $counts['Completed'] - $counts[ORDER_CANCELLED]]];
+foreach (array_merge(STATUSES, [ORDER_CANCELLED]) as $s) {
     $filters[$s] = [$s, $counts[$s]];
 }
 $filters['all'] = ['All', $total];
@@ -57,7 +56,7 @@ if (!isset($filters[$status])) {
     $status = 'active';
 }
 if ($status === 'active') {
-    $where[] = "o.status <> 'Completed'";
+    $where[] = "o.status NOT IN ('Completed','Cancelled')";
 } elseif ($status !== 'all') {
     $where[] = 'o.status = ?';
     $params[] = $status;
@@ -70,7 +69,7 @@ $orders = q(
     "SELECT o.id, o.order_no, o.status, o.weight_kg, o.amount_due, o.created_at, o.updated_at,
             c.name AS customer_name, c.phone, s.name AS service_name, COALESCE(p.paid, 0) AS paid
      $from_sql WHERE $whereSql
-     ORDER BY " . ($status === 'Completed' || $status === 'all' ? 'o.created_at DESC' : 'o.created_at ASC') . '
+     ORDER BY " . (in_array($status, ['Completed', 'Cancelled', 'all'], true) ? 'o.created_at DESC' : 'o.created_at ASC') . '
      LIMIT ' . $perPage . ' OFFSET ' . (($page - 1) * $perPage),
     $params
 )->fetchAll();
@@ -117,7 +116,7 @@ require __DIR__ . '/../includes/layout/app_top.php';
         <span role="columnheader">Weight</span><span role="columnheader">Total</span><span role="columnheader">Payment</span>
         <span role="columnheader">Status</span><span role="columnheader" class="ta-r">Action</span>
       </div>
-      <?php foreach ($orders as $o): [$pk, $pl] = payment_state((float) $o['amount_due'], (float) $o['paid']); ?>
+      <?php foreach ($orders as $o): [$pk, $pl] = $o['status'] === ORDER_CANCELLED ? ['refunded', 'Cancelled'] : payment_state((float) $o['amount_due'], (float) $o['paid']); ?>
         <div class="tr" role="row" data-href="<?= e(url('app/order.php?id=' . $o['id'])) ?>">
           <span role="cell" class="c-no"><a class="order-no" href="<?= e(url('app/order.php?id=' . $o['id'])) ?>"><?= e($o['order_no']) ?></a><span class="muted-sm"><?= e(fmt_when($o['created_at'])) ?></span></span>
           <span role="cell" class="c-cust"><b class="truncate"><?= e($o['customer_name']) ?></b><span class="muted-sm"><?= e(fmt_phone($o['phone'])) ?></span></span>

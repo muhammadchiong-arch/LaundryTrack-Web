@@ -10,7 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (strlen($new) < 8) $errors['new_password'] = 'Use at least 8 characters.';
     elseif ($new !== ($_POST['new_password2'] ?? '')) $errors['new_password2'] = 'The passwords don\'t match.';
     if (!$errors) {
-        q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $me['id']]);
+        if (password_verify($new, (string) $hash)) {
+            $errors['new_password'] = 'Choose a password different from the current one.';
+        }
+    }
+    if (!$errors) {
+        q('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $me['id']]);
         session_regenerate_id(true);
         flash('Password changed.');
         redirect('app/account.php');

@@ -41,7 +41,7 @@ if ($customerId && ($_SESSION['track_until'] ?? 0) < time()) {
 
 $order = $customerId ? q_one(
     'SELECT o.*, s.name AS service_name, c.name AS customer_name,
-            (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.order_id = o.id) AS paid
+            ' . sql_paid() . ' AS paid
        FROM orders o JOIN services s ON s.id = o.service_id JOIN customers c ON c.id = o.customer_id
       WHERE o.order_no = ? AND o.customer_id = ?',
     [$orderNo, $customerId]
@@ -99,13 +99,15 @@ require __DIR__ . '/includes/layout/head.php';
           echo e(match ($order['status']) {
               'Ready for Pickup' => 'Pick up at the shop',
               'Completed' => 'All done',
+              'Cancelled' => 'Order cancelled',
               default => next_status($order['status']) . ' is next',
           });
         ?></b>
         <span class="aside-text"><?php
           echo e(match ($order['status']) {
               'Ready for Pickup' => $balance > 0 ? 'Bring your claim slip. Balance to pay at pickup: ' . money($balance) . '.' : 'Bring your claim slip. Your order is fully paid.',
-              'Completed' => 'Picked up ' . fmt_when($order['completed_at']) . '. Thank you!',
+              'Completed' => 'Picked up ' . fmt_when($order['completed_at']) . '. Thank you.',
+              'Cancelled' => $order['cancel_reason'] ?: 'Contact the shop if you have questions.',
               default => 'This page shows each step as the shop updates it. Reload to see the latest.',
           });
         ?></span>

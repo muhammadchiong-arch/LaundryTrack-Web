@@ -12,12 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pass = (string) ($_POST['password'] ?? '');
         if ($v['name'] === '') $errors['name'] = 'Enter a name.';
         if (!filter_var($v['email'], FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Enter a valid email.';
-        elseif (q_val('SELECT COUNT(*) FROM users WHERE email = ?', [$v['email']])) $errors['email'] = 'Someone already uses this email.';
+        elseif (q_val('SELECT COUNT(*) FROM users WHERE email = ?', [$v['email']]) || q_val('SELECT COUNT(*) FROM customers WHERE email = ? AND password_hash IS NOT NULL', [$v['email']])) $errors['email'] = 'Someone already uses this email.';
         if (!in_array($v['role'], ['admin', 'staff'], true)) $errors['role'] = 'Choose a role.';
         if (strlen($pass) < 8) $errors['password'] = 'Use at least 8 characters.';
         if (!$errors) {
-            q('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+            q('INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 1)',
               [mb_substr($v['name'], 0, 100), $v['email'], password_hash($pass, PASSWORD_DEFAULT), $v['role']]);
+            log_activity('staff.add', $v['name'] . ' added as ' . $v['role']);
             flash($v['name'] . ' can now sign in with ' . $v['email'] . '.');
             redirect('app/staff.php');
         }
@@ -27,12 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle') {
         q('UPDATE users SET is_active = 1 - is_active WHERE id = ?', [$target]);
         $u = q_one('SELECT name, is_active FROM users WHERE id = ?', [$target]);
+        if ($u) log_activity('staff.toggle', $u['name'] . ' turned ' . ($u['is_active'] ? 'on' : 'off'));
         if ($u) flash($u['name'] . ($u['is_active'] ? ' can sign in again.' : ' is turned off and can no longer sign in.'));
         redirect('app/staff.php');
     } elseif ($action === 'role') {
         $role = input('new_role');
         if (in_array($role, ['admin', 'staff'], true)) {
             q('UPDATE users SET role = ? WHERE id = ?', [$role, $target]);
+            log_activity('staff.role', 'User #' . $target . ' role set to ' . $role);
             flash('Role updated.');
         }
         redirect('app/staff.php');
@@ -41,8 +44,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (strlen($pass) < 8) {
             flash('The new password needs at least 8 characters.', 'error');
         } else {
-            q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $target]);
-            flash('Password reset. Give the new password to the staff member.');
+            q('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?', [password_hash($pass, PASSWORD_DEFAULT), $target]);
+            log_activity('staff.reset_password', 'Password reset for user #' . $target);
+            flash('Password reset. Give it to the staff member; they must choose a new one when they sign in.');
         }
         redirect('app/staff.php');
     }
@@ -121,7 +125,7 @@ require __DIR__ . '/../includes/layout/app_top.php';
         <div class="field">
           <label for="password">Temporary password</label>
           <input id="password" name="password" type="text" minlength="8" required autocomplete="off">
-          <?= field_error($errors, 'password') ?: '<small class="hint">At least 8 characters. They can change it after signing in.</small>' ?>
+          <?= field_error($errors, 'password') ?: '<small class="hint">At least 8 characters. They must choose their own password when they first sign in.</small>' ?>
         </div>
         <button class="btn btn-primary btn-block" type="submit"><?= icon('plus') ?>Add staff</button>
       </form>

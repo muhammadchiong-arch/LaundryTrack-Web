@@ -1,25 +1,33 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
-$me = require_role('admin');
+$me = require_role('admin', 'staff');
+refresh_bookings();
 handle_advance_post('app/dashboard.php');
+$isAdmin = $me['role'] === 'admin';
 
 $ordersToday = (int) q_val('SELECT COUNT(*) FROM orders WHERE created_at >= CURDATE()');
-$salesToday = (float) q_val('SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE created_at >= CURDATE()');
+$salesToday = (float) q_val("SELECT COALESCE(SUM(IF(kind = 'refund', -amount, amount)), 0) FROM transactions WHERE created_at >= CURDATE() AND voided_at IS NULL");
 $unpaid = (float) q_val(
     "SELECT COALESCE(SUM(GREATEST(o.amount_due - COALESCE(p.paid, 0), 0)), 0)
-       FROM orders o LEFT JOIN (SELECT order_id, SUM(amount) paid FROM transactions GROUP BY order_id) p ON p.order_id = o.id"
+       FROM orders o " . sql_paid_join() . " WHERE o.status <> 'Cancelled'"
 );
+$toReview = (int) q_val("SELECT COUNT(*) FROM bookings WHERE status = 'Pending'");
+$dropoffs = q(
+    "SELECT b.*, c.name AS customer_name, s.name AS service_name FROM bookings b
+       JOIN customers c ON c.id = b.customer_id JOIN services s ON s.id = b.service_id
+      WHERE b.slot_date = CURDATE() AND b.status IN ('Pending','Confirmed') ORDER BY b.slot_time LIMIT 12"
+)->fetchAll();
 
 $lanes = array_fill_keys(array_slice(STATUSES, 0, 5), []);
 $laneCounts = array_fill_keys(array_keys($lanes), 0);
-foreach (q("SELECT status, COUNT(*) n FROM orders WHERE status <> 'Completed' GROUP BY status") as $r) {
+foreach (q("SELECT status, COUNT(*) n FROM orders WHERE status NOT IN ('Completed','Cancelled') GROUP BY status") as $r) {
     $laneCounts[$r['status']] = (int) $r['n'];
 }
 $rows = q(
     "SELECT o.id, o.order_no, o.status, o.weight_kg, o.amount_due, o.created_at, c.name AS customer_name, c.phone, s.name AS service_name,
-            (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.order_id = o.id) AS paid
+            " . sql_paid() . " AS paid
        FROM orders o JOIN customers c ON c.id = o.customer_id JOIN services s ON s.id = o.service_id
-      WHERE o.status <> 'Completed' ORDER BY o.created_at"
+      WHERE o.status NOT IN ('Completed','Cancelled') ORDER BY o.created_at"
 )->fetchAll();
 foreach ($rows as $r) {
     if (count($lanes[$r['status']]) < 8) {
@@ -36,7 +44,9 @@ $recent = q(
 )->fetchAll();
 
 $ready = $laneCounts['Ready for Pickup'];
-if ($ready) {
+if ($toReview) {
+    $headline = $toReview . ($toReview === 1 ? ' booking' : ' bookings') . ' to review';
+} elseif ($ready) {
     $headline = $ready . ($ready === 1 ? ' order' : ' orders') . ' ready for pickup';
 } elseif ($inProgress) {
     $headline = $inProgress . ($inProgress === 1 ? ' order' : ' orders') . ' in progress';
@@ -58,12 +68,31 @@ require __DIR__ . '/../includes/layout/app_top.php';
 </div>
 
 <section class="stat-strip" aria-label="Today">
+  <a class="stat" href="<?= e(url('app/bookings.php?tab=review')) ?>"><span>Bookings to review</span><b><?= $toReview ?></b></a>
   <div class="stat"><span>Orders today</span><b><?= $ordersToday ?></b></div>
-  <div class="stat"><span>Collected today</span><b><?= e(money($salesToday)) ?></b></div>
   <a class="stat" href="<?= e(url('app/orders.php')) ?>"><span>In progress</span><b><?= $inProgress ?></b></a>
   <a class="stat" href="<?= e(url('app/orders.php?status=' . rawurlencode('Ready for Pickup'))) ?>"><span>Ready for Pickup</span><b><?= $laneCounts['Ready for Pickup'] ?></b></a>
-  <a class="stat" href="<?= e(url('app/orders.php?status=all&pay=unpaid')) ?>"><span>Unpaid balance</span><b><?= e(money($unpaid)) ?></b></a>
+  <?php if ($isAdmin): ?>
+    <a class="stat" href="<?= e(url('app/transactions.php')) ?>"><span>Collected today</span><b><?= e(money($salesToday)) ?></b></a>
+  <?php else: ?>
+    <a class="stat" href="<?= e(url('app/orders.php?status=all&pay=unpaid')) ?>"><span>Unpaid orders</span><b><?= e(money($unpaid)) ?></b></a>
+  <?php endif; ?>
 </section>
+
+<?php if ($dropoffs): ?>
+<section class="panel">
+  <div class="panel-head"><h3>Drop-offs booked today</h3><a href="<?= e(url('app/schedule.php')) ?>">Schedule</a></div>
+  <ul class="list">
+    <?php foreach ($dropoffs as $b): ?>
+      <li><div class="list-row">
+        <span class="list-main"><b><?= e(date('g:i A', strtotime('2000-01-01 ' . $b['slot_time']))) ?> · <?= e($b['customer_name']) ?></b><span><?= e($b['booking_no']) ?> · <?= e($b['service_name']) ?></span></span>
+        <?= booking_chip($b['status']) ?>
+        <a class="btn btn-sm btn-primary" href="<?= e(url('app/booking.php?id=' . $b['id'] . '#dropoff')) ?>">Receive laundry</a>
+      </div></li>
+    <?php endforeach; ?>
+  </ul>
+</section>
+<?php endif; ?>
 
 <section class="board-wrap" aria-label="Order board">
   <div class="section-head"><h3>Order board</h3><a href="<?= e(url('app/orders.php')) ?>">All orders</a></div>

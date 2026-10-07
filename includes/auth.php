@@ -8,7 +8,7 @@ function current_user(): ?array
     $user = null;
     if (!empty($_SESSION['uid'])) {
         // Re-read every request so a deactivated account is signed out at once.
-        $user = q_one('SELECT id, name, email, role FROM users WHERE id = ? AND is_active = 1', [$_SESSION['uid']]);
+        $user = q_one('SELECT id, name, email, role, must_change_password FROM users WHERE id = ? AND is_active = 1', [$_SESSION['uid']]);
         if (!$user) {
             unset($_SESSION['uid']);
         } else {
@@ -18,9 +18,52 @@ function current_user(): ?array
     return $user;
 }
 
+// Signed-in customer with an online account (role 'customer'), or null.
+function current_customer(): ?array
+{
+    static $c = false;
+    if ($c !== false) {
+        return $c;
+    }
+    $c = null;
+    if (!empty($_SESSION['cid'])) {
+        $c = q_one('SELECT id, name, email, phone, address FROM customers WHERE id = ? AND is_active = 1 AND password_hash IS NOT NULL', [$_SESSION['cid']]);
+        if (!$c) {
+            unset($_SESSION['cid']);
+        } else {
+            $c['id'] = (int) $c['id'];
+            $c['role'] = 'customer';
+        }
+    }
+    return $c;
+}
+
+function login_customer(array $c): void
+{
+    session_regenerate_id(true);
+    unset($_SESSION['uid']);
+    $_SESSION['cid'] = (int) $c['id'];
+    q('UPDATE customers SET last_login_at = NOW() WHERE id = ?', [$c['id']]);
+}
+
+function require_customer(): array
+{
+    $c = current_customer();
+    if (!$c) {
+        $_SESSION['after_login'] = $_SERVER['REQUEST_URI'] ?? '';
+        if (current_user()) {
+            redirect(home_for(current_user()));
+        }
+        flash('Sign in or create an account to book.', 'warning');
+        redirect('login.php');
+    }
+    return $c;
+}
+
 function login_user(array $user): void
 {
     session_regenerate_id(true);
+    unset($_SESSION['cid']);
     $_SESSION['uid'] = (int) $user['id'];
     $_SESSION['intro'] = true; // play the welcome intro on the first page after sign-in
     q('UPDATE users SET last_login_at = NOW() WHERE id = ?', [$user['id']]);
@@ -38,7 +81,7 @@ function logout_user(): void
 
 function home_for(array $user): string
 {
-    return $user['role'] === 'admin' ? 'app/dashboard.php' : 'app/orders.php';
+    return $user['role'] === 'customer' ? 'my/index.php' : 'app/dashboard.php';
 }
 
 function require_login(): array
@@ -47,6 +90,11 @@ function require_login(): array
     if (!$user) {
         $_SESSION['after_login'] = $_SERVER['REQUEST_URI'] ?? '';
         redirect('login.php');
+    }
+    // After an admin reset, the temporary password must be replaced before anything else.
+    if (!empty($user['must_change_password']) && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'account.php') {
+        flash('Choose a new password to continue. The one you used was temporary.', 'warning');
+        redirect('app/account.php');
     }
     return $user;
 }
@@ -57,7 +105,7 @@ function require_role(string ...$roles): array
     if (!in_array($user['role'], $roles, true)) {
         http_response_code(403);
         $title = 'Admins only';
-        $message = 'This page is for admins. Ask the shop owner if you need access.';
+        $message = 'This page is for the shop admin. Ask the owner if you need access.';
         $back = url(home_for($user));
         require __DIR__ . '/layout/error.php';
         exit;

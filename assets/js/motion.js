@@ -112,6 +112,10 @@
 
   // ---------- Intro after sign-in (Web v2 loading screen) ----------
   var intro = document.querySelector('[data-intro-screen]');
+  // A welcome is nice once; staff sign in many times a day, so after the first time today it is skipped.
+  var today = new Date().toDateString(), seen = null;
+  try { seen = localStorage.getItem('lt-intro'); localStorage.setItem('lt-intro', today); } catch (e) { /* private mode */ }
+  if (intro && seen === today) { intro.remove(); intro = null; }
   if (intro) {
     var calmI = reduce.matches;
     intro.hidden = false;
