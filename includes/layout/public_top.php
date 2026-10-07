@@ -11,6 +11,7 @@ require __DIR__ . '/head.php';
   <div class="split-card">
     <section class="split-panel">
       <a class="brand" href="<?= e(url('')) ?>"><img src="<?= e(url('assets/img/logo.svg')) ?>" alt=""><span>Laundry<span>Track</span></span></a>
+      <div class="split-washer" aria-hidden="true"><?php $bare = true; require __DIR__ . '/../partials/washer.php'; ?></div>
       <div class="split-panel-body">
         <h1 class="display"><?= $panelTitle ?></h1>
         <p><?= e($panelText) ?></p>

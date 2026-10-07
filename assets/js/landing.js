@@ -73,7 +73,7 @@
   var noteEl = document.querySelector('[data-hero-note]');
   var textEl = document.querySelector('[data-hero-text]');
   var bars = $$('.l-sc-bars span');
-  var mark = document.querySelector('.l-status-card [data-lm]');
+  var mark = document.querySelector('[data-hero-mark] svg.lm');
   var band = $$('[data-statuses] li');
   var stage = 3;
   var show = function (s) {
@@ -82,7 +82,7 @@
     var cls = function (i) { return i < s ? 'done' : i === s ? 'cur' : ''; };
     bars.forEach(function (b, i) { b.className = cls(i); });
     band.forEach(function (li, i) { li.className = cls(i); });
-    if (mark) mark.setAttribute('data-lm', s >= 4 ? 'done' : s === 0 ? 'pending' : 'processing');
+    if (mark) mark.setAttribute('data-lm-state', s >= 4 ? 'done' : s === 0 ? 'pending' : 'processing');
     if (canAnimate(textEl)) textEl.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE });
   };
   var timer = null;
@@ -93,15 +93,11 @@
   };
   run();
 
-  // Floating bubbles and the washer drum (SVG animations) stop under reduced motion.
+  // Floating bubbles stop under reduced motion. (The washer itself is handled by motion.js.)
   var bubbleAnims = [];
-  var drum = document.querySelector('[data-drum]');
   var applyMotion = function () {
     bubbleAnims.forEach(function (a) { a.cancel(); });
     bubbleAnims = [];
-    if (drum && drum.pauseAnimations) {
-      if (reduce.matches) { drum.pauseAnimations(); drum.setCurrentTime(0); } else drum.unpauseAnimations();
-    }
     if (reduce.matches) return;
     $$('[data-bubble]').forEach(function (n, i) {
       if (typeof n.animate !== 'function') return;

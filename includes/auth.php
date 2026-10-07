@@ -22,6 +22,7 @@ function login_user(array $user): void
 {
     session_regenerate_id(true);
     $_SESSION['uid'] = (int) $user['id'];
+    $_SESSION['intro'] = true; // play the welcome intro on the first page after sign-in
     q('UPDATE users SET last_login_at = NOW() WHERE id = ?', [$user['id']]);
 }
 

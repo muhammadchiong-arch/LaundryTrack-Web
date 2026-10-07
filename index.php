@@ -54,34 +54,6 @@ $values = [
 ];
 $nav = [['Home', '#home', 'home'], ['Features', '#features', 'features'], ['How It Works', '#how', 'how'], ['For Businesses', '#business', 'business']];
 
-// Washer drum ring: the design's gradient arc, drawn in short segments.
-function drum_ring(): string
-{
-    $cx = 1376; $cy = 813.5; $r = 289;
-    $p = fn ($a) => [$cx + $r * cos(deg2rad($a)), $cy + $r * sin(deg2rad($a))];
-    $stops = [[-92, '#A0FBF6'], [-60, '#8DF4F2'], [-30, '#78E5ED'], [0, '#5DCDED'], [30, '#4FB0EF'], [60, '#4591F0'], [90, '#4784F4'], [120, '#4B8BF3'], [150, '#5AB0EC'], [170, '#65CBEC'], [182, '#72DBF0']];
-    $col = function ($a) use ($stops) {
-        $i = 0;
-        while ($i < count($stops) - 2 && $a > $stops[$i + 1][0]) $i++;
-        [$a0, $c0] = $stops[$i]; [$a1, $c1] = $stops[$i + 1];
-        $t = min(1, max(0, ($a - $a0) / ($a1 - $a0)));
-        $rgb = [];
-        for ($k = 0; $k < 3; $k++) {
-            $v0 = hexdec(substr($c0, 1 + 2 * $k, 2)); $v1 = hexdec(substr($c1, 1 + 2 * $k, 2));
-            $rgb[] = (int) round($v0 + ($v1 - $v0) * $t);
-        }
-        return 'rgb(' . implode(',', $rgb) . ')';
-    };
-    $out = '';
-    for ($a = -92; $a < 182; $a += 4) {
-        $b = min(182, $a + 4.6);
-        [$x1, $y1] = $p($a); [$x2, $y2] = $p($b);
-        $out .= sprintf('<path d="M%.2f %.2fA%d %d 0 0 1 %.2f %.2f" stroke="%s"/>', $x1, $y1, $r, $r, $x2, $y2, $col($a + 2));
-    }
-    [$ax, $ay] = $p(-92); [$bx, $by] = $p(182);
-    return $out . sprintf('<circle cx="%.2f" cy="%.2f" r="18" fill="#A0FBF6"/><circle cx="%.2f" cy="%.2f" r="18" fill="#72DBF0"/>', $ax, $ay, $bx, $by);
-}
-
 $title = 'Laundry management and order tracking';
 ?>
 <!doctype html>
@@ -93,10 +65,11 @@ $title = 'Laundry management and order tracking';
 <meta name="description" content="Manage laundry and track every order. Orders, statuses, payments and customer tracking in one simple system.">
 <title><?= e($shopName) ?> · Manage laundry. Track every order.</title>
 <link rel="icon" href="<?= e(url('assets/img/logo.svg')) ?>" type="image/svg+xml">
-<link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>?v=2">
-<link rel="stylesheet" href="<?= e(url('assets/css/landing.css')) ?>?v=1">
+<link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>?v=3">
+<link rel="stylesheet" href="<?= e(url('assets/css/landing.css')) ?>?v=2">
 <script>if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&'IntersectionObserver'in window)document.documentElement.classList.add('js-reveal')</script>
-<script src="<?= e(url('assets/js/landing.js')) ?>?v=1" defer></script>
+<script src="<?= e(url('assets/js/landing.js')) ?>?v=2" defer></script>
+<script src="<?= e(url('assets/js/motion.js')) ?>?v=1" defer></script>
 </head>
 <body class="landing">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -110,7 +83,7 @@ $title = 'Laundry management and order tracking';
       <a href="<?= e(url('track.php')) ?>">Track Order<span class="l-underline" aria-hidden="true"></span></a>
     </nav>
     <a class="l-btn l-btn-dark" href="<?= e($startUrl) ?>">Get Started</a>
-    <button class="l-menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="l-menu" data-l-menu><?= ph('list', 'ph i-open') ?><?= ph('x', 'ph i-close') ?></button>
+    <button class="l-menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="l-menu" data-l-menu><span class="l-burger" aria-hidden="true"><span></span><span></span></span></button>
   </div>
   <nav class="l-mobile" id="l-menu" aria-label="Mobile" hidden>
     <?php foreach ($nav as [$label, $href, $key]): ?>
@@ -134,43 +107,11 @@ $title = 'Laundry management and order tracking';
       <?php foreach ([[10, 8, 3.25, .95], [78, 4, 2, .85], [86, 40, 1.25, .8], [4, 46, 1.5, .75], [64, 74, 2.5, .9]] as $i => [$x, $y, $s, $o]): ?>
         <span class="l-bubble" data-bubble style="left:<?= $x ?>%;top:<?= $y ?>%;width:<?= $s ?>rem;height:<?= $s ?>rem;opacity:<?= $o ?>" aria-hidden="true"></span>
       <?php endforeach; ?>
-      <div class="l-drum">
-        <svg viewBox="1040 477 672 672" role="img" aria-label="Laundry is being processed" data-drum>
-          <defs>
-            <linearGradient id="dNavy" gradientUnits="userSpaceOnUse" x1="1239" y1="519" x2="1513" y2="1108"><stop offset="0" stop-color="#425D8E"/><stop offset=".12" stop-color="#3F5A8A"/><stop offset=".35" stop-color="#24386A"/><stop offset="1" stop-color="#1A2A56"/></linearGradient>
-            <linearGradient id="dGroove" gradientUnits="userSpaceOnUse" x1="1239" y1="519" x2="1513" y2="1108"><stop offset="0" stop-color="#5A7EB1"/><stop offset=".12" stop-color="#557DAE"/><stop offset=".35" stop-color="#37578F"/><stop offset="1" stop-color="#2A4A86"/></linearGradient>
-            <radialGradient id="dGlass" cx=".38" cy=".32" r=".8"><stop offset="0" stop-color="#2E4A80"/><stop offset=".6" stop-color="#1F2F5E"/><stop offset="1" stop-color="#18234A"/></radialGradient>
-            <clipPath id="dBub"><circle cx="1376" cy="813.5" r="196"/></clipPath>
-          </defs>
-          <g transform="translate(1376 813.5)"><g>
-            <animateTransform attributeName="transform" type="scale" values="1;1.008;1" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1" dur="4.2s" repeatCount="indefinite"/>
-            <g transform="translate(-1376 -813.5)">
-            <circle cx="1376" cy="813.5" r="324" fill="url(#dNavy)"/>
-            <circle cx="1376" cy="813.5" r="289" fill="none" stroke="url(#dGroove)" stroke-width="36"/>
-            <g fill="none" stroke-width="36">
-              <animateTransform attributeName="transform" type="rotate" from="0 1376 813.5" to="360 1376 813.5" dur="4.2s" repeatCount="indefinite"/>
-              <?= drum_ring() ?>
-            </g>
-            <circle cx="1376" cy="813.5" r="244.5" fill="#1D2A55"/>
-            <circle cx="1376" cy="813.5" r="202" fill="url(#dGlass)"/>
-            <g clip-path="url(#dBub)">
-              <?php foreach ([[1290, 9, 4.6, -0.5, 10], [1420, 13, 5.4, -2.2, -14], [1350, 7, 3.8, -3.1, 6], [1470, 8, 4.2, -1.4, -8], [1240, 11, 5.0, -3.9, 12]] as [$bx, $br, $bd, $bb, $bdx]): ?>
-                <g opacity="0">
-                  <animateTransform attributeName="transform" type="translate" values="0 0;<?= $bdx ?> -300" dur="<?= $bd ?>s" begin="<?= $bb ?>s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines=".3 0 .6 1"/>
-                  <animate attributeName="opacity" values="0;.95;.95;0" keyTimes="0;.18;.7;1" dur="<?= $bd ?>s" begin="<?= $bb ?>s" repeatCount="indefinite"/>
-                  <circle cx="<?= $bx ?>" cy="960" r="<?= $br ?>" fill="rgba(160,205,255,.22)" stroke="rgba(215,236,255,.75)" stroke-width="2.5"/>
-                  <circle cx="<?= $bx - $br * .35 ?>" cy="<?= 960 - $br * .35 ?>" r="<?= $br * .28 ?>" fill="rgba(255,255,255,.85)"/>
-                </g>
-              <?php endforeach; ?>
-            </g>
-            </g>
-          </g></g>
-        </svg>
-      </div>
+      <div class="l-drum"><?php $bare = true; require __DIR__ . '/includes/partials/washer.php'; ?></div>
       <div class="l-status-card" role="status" aria-live="polite" aria-label="Example order status">
         <div class="l-sc-top"><b>Order LAU-1052</b><span>Wash &amp; Fold, 6 kg</span></div>
         <div class="l-sc-mid">
-          <span class="l-lm" data-lm="processing"><img src="<?= e(url('assets/img/logo.svg')) ?>" alt=""><svg class="l-lm-ring" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22.5"/></svg><span class="l-lm-check" aria-hidden="true"><?= icon('check') ?></span></span>
+          <span class="l-lm l-lm-card" data-hero-mark><?php $lmState = 'processing'; $lmClass = ''; require __DIR__ . '/includes/partials/logo_motion.php'; ?></span>
           <div class="l-sc-text" data-hero-text><b data-hero-status><?= e($stages[$heroStage][0]) ?></b><span data-hero-note><?= e($stages[$heroStage][3]) ?></span></div>
         </div>
         <div class="l-sc-bars" aria-hidden="true">
@@ -246,7 +187,7 @@ $title = 'Laundry management and order tracking';
   <section class="l-wrap l-sec l-split l-business" id="business" data-section="business">
     <div class="l-stack l-sticky" data-reveal>
       <h2 class="l-h2">Built for the way laundry businesses work.</h2>
-      <span class="l-lm l-lm-big" data-lm="done"><img src="<?= e(url('assets/img/logo.svg')) ?>" alt=""><span class="l-lm-check" aria-hidden="true"><?= icon('check') ?></span></span>
+      <span class="l-lm l-lm-big"><?php $lmState = 'done'; $lmClass = ''; require __DIR__ . '/includes/partials/logo_motion.php'; ?></span>
     </div>
     <div class="l-values">
       <?php foreach ($values as [$ic, $t, $d]): ?>
@@ -262,7 +203,7 @@ $title = 'Laundry management and order tracking';
         <p>LaundryTrack connects customers, staff, and administrators in one simple laundry management system.</p>
         <a class="l-btn l-btn-peri l-btn-lg" href="<?= e($startUrl) ?>">Get Started<?= ph('arrow-right') ?></a>
       </div>
-      <span class="l-lm l-lm-cta" data-lm="processing" aria-hidden="true"><img src="<?= e(url('assets/img/logo.svg')) ?>" alt=""><svg class="l-lm-ring" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22.5"/></svg></span>
+      <span class="l-lm l-lm-cta" aria-hidden="true"><?php $lmState = 'processing'; $lmClass = ''; require __DIR__ . '/includes/partials/logo_motion.php'; ?></span>
     </div>
   </section>
 </main>

@@ -18,6 +18,7 @@ require __DIR__ . '/head.php';
 ?>
 <body class="app">
 <a class="skip-link" href="#main">Skip to content</a>
+<?php if (!empty($_SESSION['intro'])) { unset($_SESSION['intro']); require __DIR__ . '/../partials/intro.php'; } ?>
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="Main">
   <div class="sidebar-inner">

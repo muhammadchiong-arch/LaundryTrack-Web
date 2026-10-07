@@ -31,6 +31,12 @@ The home page is <http://localhost/laundrytrack/>. The customer tracking page is
 
 **Customers on their own phones:** customers on the shop's Wi-Fi can open `http://<this-PC's-IP>/laundrytrack/track.php` (find the IP with `ipconfig`). You can also leave the track page open on a counter tablet. The app needs no internet: fonts, icons and scripts are all stored locally.
 
+## Motion
+
+- The landing page and the sign-in pages show the animated washer and logo mark from the LaundryTrack designs. Animations pause when they are scrolled out of view.
+- After signing in, a short welcome intro plays once ("Hello, Grace" and a loading bar, about 2 seconds). A tap or any key skips it.
+- If the device asks for reduced motion, the washer and logo stay still, the intro shortens to a quick fade, and content appears without sliding.
+
 ## Daily use
 
 1. **New order:** find the customer by name or phone (or add them), choose the service, enter the weight and, if they pay now, the payment. Saving creates the order number (e.g. `LAU-1001`) and sets the status to **Received**. Print the claim slip, or tell the customer the number.
@@ -57,6 +63,8 @@ app/                 Signed-in pages (each one checks the role)
 includes/            Config, database (PDO), auth, helpers, layouts (blocked from the web by .htaccess)
 assets/              app.css, app.js, landing.css, landing.js, logo, local fonts (Nunito and Figtree, SIL Open Font License)
                      Landing icons are Phosphor Icons (MIT) inlined as SVG by includes/phosphor.php
+                     washer.jpg + includes/partials/washer.php: the animated washer (Claude Design "Processing Icon")
+                     includes/logo_paths.php + partials/logo_motion.php + js/motion.js: the animated logo mark ("Logo Motion")
 database/laundrytrack.sql
 ```
 

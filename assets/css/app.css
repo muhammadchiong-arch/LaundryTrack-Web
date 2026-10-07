@@ -226,6 +226,37 @@ body.public { background: var(--sand); }
 .step-strip .dot { width: 1rem; height: 1rem; border-radius: 999px; background: var(--navy); border: 2px solid rgba(154, 162, 255, .45); }
 .step-strip li.on { color: var(--white); }
 .step-strip li.on .dot { background: var(--peri); border-color: var(--peri); }
+/* Washer and logo marks (Claude Design components) */
+.washer { display: block; width: 100%; height: auto; overflow: visible; }
+.lm { display: block; width: 100%; height: auto; overflow: visible; }
+.lm .lm-pending, .lm .lm-done { display: none; }
+.lm[data-lm-state="pending"] .lm-pending { display: inline; }
+.lm[data-lm-state="done"] .lm-done { display: inline; animation: lm-pop 420ms var(--ease) both; }
+@keyframes lm-pop { from { transform: scale(.4); opacity: 0; } }
+.lm .lm-done { transform-box: fill-box; transform-origin: center; }
+.split-washer { flex: 1; min-height: 14rem; display: flex; align-items: center; justify-content: center; }
+.split-washer .washer { width: min(15rem, 62%); filter: drop-shadow(0 24px 30px rgba(0, 0, 0, .28)); }
+.split-panel { justify-content: flex-start; }
+.step-strip.strip-anim::after { animation: strip-fill 900ms 480ms var(--ease) backwards; transform-origin: left center; }
+@keyframes strip-fill { from { transform: scaleX(0); } }
+
+/* Welcome intro after sign-in */
+.intro {
+  position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.75rem; padding: 1.5rem;
+  background: linear-gradient(158deg, #FAF7F2 0 57%, #F2EEE6 57.15% 100%); cursor: pointer;
+}
+.intro-on body { overflow: hidden; }
+.intro-icon { width: min(10rem, 40vw); --lm-ring: #FAF7F2; }
+.intro-text { display: flex; flex-direction: column; align-items: center; gap: .5rem; text-align: center; }
+.intro-word { display: flex; align-items: center; gap: .625rem; }
+.intro-word img { width: 2rem; height: 2rem; border-radius: .55rem; }
+.intro-word > span { font-family: var(--head); font-weight: 900; font-size: 1.5rem; letter-spacing: -0.025em; }
+.intro-word > span > span { color: var(--primary); }
+.intro-line { font-family: var(--head); font-weight: 800; font-size: 1.25rem; letter-spacing: -0.015em; }
+.intro-sub { font-size: .9375rem; color: var(--muted); }
+.intro-bar { width: 9rem; height: .25rem; border-radius: 999px; background: #E6E3F5; overflow: hidden; }
+.intro-bar > div { height: 100%; width: 100%; border-radius: 999px; background: var(--primary); transform-origin: left center; transform: scaleX(0); }
+
 .split-main { display: flex; align-items: center; justify-content: center; padding: 3rem 2.5rem; }
 .split-inner { width: 100%; max-width: 24rem; display: flex; flex-direction: column; gap: 1.25rem; }
 .form-title { font-weight: 900; font-size: 2rem; letter-spacing: -0.03em; line-height: 1.1; margin-top: -.5rem; }
@@ -565,6 +596,8 @@ a.sum-card:hover { color: var(--text); filter: brightness(.98); }
 }
 
 @media (max-width: 860px) {
+  .split-washer { min-height: 11rem; }
+  .split-washer .washer { width: 10rem; }
   .order-layout, .new-order, .hero-card { grid-template-columns: minmax(0, 1fr); }
   .order-side, .summary { position: static; }
 }
@@ -597,6 +630,8 @@ a.sum-card:hover { color: var(--text); filter: brightness(.98); }
   .split-wrap { padding: 0; place-items: stretch; }
   .split-card { grid-template-columns: 1fr; border-radius: 0; min-height: 100dvh; box-shadow: none; }
   .split-panel { padding: 1.5rem 1.25rem 1.75rem; gap: 1.5rem; }
+  .split-washer { min-height: 8rem; }
+  .split-washer .washer { width: 7.5rem; }
   .split-panel .display { font-size: 2rem; }
   .split-main { padding: 2rem 1.25rem 3rem; align-items: flex-start; }
   .step-strip li span:last-child { font-size: .625rem; }
