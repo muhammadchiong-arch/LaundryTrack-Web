@@ -57,5 +57,5 @@ require __DIR__ . '/includes/layout/public_top.php';
   </div>
   <button class="btn btn-primary btn-lg btn-block" type="submit">Sign in</button>
 </form>
-<p class="split-foot">Customer? <a href="<?= e(url('')) ?>">Track your order</a> · Forgot your password? Ask the shop admin to reset it.</p>
+<p class="split-foot">Customer? <a href="<?= e(url('track.php')) ?>">Track your order</a> · Forgot your password? Ask the shop admin to reset it.</p>
 <?php require __DIR__ . '/includes/layout/public_bottom.php'; ?>

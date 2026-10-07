@@ -1,6 +1,6 @@
 # LaundryTrack Web
 
-A laundry shop management and order-tracking system that runs **offline on XAMPP**, built with PHP 8, MySQL/MariaDB, and plain HTML, CSS and JS. The look follows the Claude Design **"LaundryTrack Web v2"** (`LaundryTrack Web.html` in this repo).
+A laundry shop management and order-tracking system that runs **offline on XAMPP**, built with PHP 8, MySQL/MariaDB, and plain HTML, CSS and JS. The workspace follows the Claude Design **"LaundryTrack Web v2"** (`LaundryTrack Web.html`) and the home page follows **"LaundryTrack Landing v7"** (`LaundryTrack Landing v7.html`).
 
 | Role | Can use |
 |---|---|
@@ -25,11 +25,11 @@ Every order follows the same steps, with the same words on every screen:
 4. Open <http://localhost/laundrytrack/setup.php> and create the admin account. This page turns itself off once an account exists.
 5. Sign in at <http://localhost/laundrytrack/login.php>. Add staff under **Staff**, and set prices under **Settings**.
 
-The customer tracking page is <http://localhost/laundrytrack/>.
+The home page is <http://localhost/laundrytrack/>. The customer tracking page is <http://localhost/laundrytrack/track.php>, linked from the home page as **Track Order**.
 
 **Different MySQL password or port?** Copy `includes/config.local.example.php` to `includes/config.local.php` and change only the values that differ. That file is git-ignored.
 
-**Customers on their own phones:** customers on the shop's Wi-Fi can open `http://<this-PC's-IP>/laundrytrack/` (find the IP with `ipconfig`). You can also leave the track page open on a counter tablet. The app needs no internet: fonts, icons and scripts are all stored locally.
+**Customers on their own phones:** customers on the shop's Wi-Fi can open `http://<this-PC's-IP>/laundrytrack/track.php` (find the IP with `ipconfig`). You can also leave the track page open on a counter tablet. The app needs no internet: fonts, icons and scripts are all stored locally.
 
 ## Daily use
 
@@ -40,8 +40,8 @@ The customer tracking page is <http://localhost/laundrytrack/>.
 ## What's inside
 
 ```
-index.php            Customer tracking form (order no. + last 4 digits of phone)
-track.php            Customer order status, timeline, order history
+index.php            Landing page (Landing v7): Get Started → sign in, Track Order → tracking
+track.php            Customer tracking: order no. + last 4 phone digits → status, timeline, order history
 login.php, logout.php, setup.php
 app/                 Signed-in pages (each one checks the role)
   dashboard.php      Admin: today's numbers, order board, recent updates
@@ -55,7 +55,8 @@ app/                 Signed-in pages (each one checks the role)
   account.php        Change your own password
   api/customers.php  Customer search used by New order
 includes/            Config, database (PDO), auth, helpers, layouts (blocked from the web by .htaccess)
-assets/              app.css, app.js, logo, local fonts (Nunito and Figtree, SIL Open Font License)
+assets/              app.css, app.js, landing.css, landing.js, logo, local fonts (Nunito and Figtree, SIL Open Font License)
+                     Landing icons are Phosphor Icons (MIT) inlined as SVG by includes/phosphor.php
 database/laundrytrack.sql
 ```
 

@@ -1,9 +1,38 @@
 <?php
-// Customer view of one order. Access comes from index.php (order no. + phone last 4)
-// and covers that customer's orders for 2 hours.
+// Customers track an order with its number + the last 4 digits of their phone.
+// A match unlocks that customer's orders in this browser for 2 hours.
 require __DIR__ . '/includes/bootstrap.php';
 
-$orderNo = strtoupper(input('o'));
+$orderNo = strtoupper(input('order_no', input('o')));
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $last4 = preg_replace('/\D+/', '', input('last4'));
+    // "1001" and "lau1001" both mean LAU-1001.
+    if (preg_match('/^(?:LAU)?-?\s*(\d{1,10})$/', str_replace(' ', '', $orderNo), $m)) {
+        $orderNo = 'LAU-' . $m[1];
+    }
+
+    if (too_many_attempts('track', 10, 15)) {
+        $error = 'Too many tries. Please wait 15 minutes, or ask the shop for your order status.';
+    } elseif ($orderNo === '' || strlen($last4) !== 4) {
+        $error = 'Enter your order number and the last 4 digits of your phone number.';
+    } else {
+        $row = q_one(
+            'SELECT o.id, o.customer_id, c.phone FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.order_no = ?',
+            [$orderNo]
+        );
+        if ($row && strlen($row['phone']) >= 4 && hash_equals(substr($row['phone'], -4), $last4)) {
+            session_regenerate_id(true);
+            $_SESSION['track_customer'] = (int) $row['customer_id'];
+            $_SESSION['track_until'] = time() + 2 * 3600;
+            redirect('track.php?o=' . rawurlencode($orderNo));
+        }
+        record_attempt('track');
+        $error = "We couldn't find an order with that number and phone. Check the number on your claim slip.";
+    }
+}
+
 $customerId = (int) ($_SESSION['track_customer'] ?? 0);
 if ($customerId && ($_SESSION['track_until'] ?? 0) < time()) {
     unset($_SESSION['track_customer'], $_SESSION['track_until']);
@@ -19,8 +48,8 @@ $order = $customerId ? q_one(
 ) : null;
 
 if (!$order) {
-    flash('Enter your order number and phone digits to view your order.', 'warning');
-    redirect('?o=' . rawurlencode($orderNo));
+    require __DIR__ . '/includes/partials/track_form.php';
+    exit;
 }
 
 $stamps = [];
@@ -48,7 +77,7 @@ require __DIR__ . '/includes/layout/head.php';
 <body class="public track-page">
 <header class="track-top">
   <a class="brand brand-dark" href="<?= e(url('')) ?>"><img src="<?= e(url('assets/img/logo.svg')) ?>" alt=""><span>Laundry<span>Track</span></span></a>
-  <a class="btn btn-ghost btn-sm" href="<?= e(url('')) ?>"><?= icon('search') ?>Track another order</a>
+  <a class="btn btn-ghost btn-sm" href="<?= e(url('track.php')) ?>"><?= icon('search') ?>Track another order</a>
 </header>
 <main class="track-main">
   <p class="kicker"><?= e(strtoupper(setting('shop_name', 'LaundryTrack'))) ?></p>
